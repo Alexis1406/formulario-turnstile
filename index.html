@@ -1,0 +1,185 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Formulario Seguro con Cloudflare Turnstile (Vercel Ready)</title>
+  <link rel="stylesheet" href="style.css">
+  <!-- Script oficial de Cloudflare Turnstile -->
+  <script src="https://challenges.cloudflare.com/turnstile/v0/api.js" async defer></script>
+</head>
+<body>
+  <div class="container">
+    <!-- Tarjeta del Formulario -->
+    <div class="card" id="formCard">
+      <div class="card-header">
+        <span class="badge">Vercel + Cloudflare Turnstile</span>
+        <h2>Registro y Contacto</h2>
+        <p>Valida tu identidad de forma transparente sin resolver molestos rompecabezas.</p>
+      </div>
+
+      <form id="registroForm">
+        <div class="form-group">
+          <label for="nombre">Nombre completo</label>
+          <input type="text" id="nombre" name="nombre" placeholder="Ej. Carlos Martínez" required>
+        </div>
+
+        <div class="form-group">
+          <label for="email">Correo electrónico</label>
+          <input type="email" id="email" name="email" placeholder="carlos@correo.com" required>
+        </div>
+
+        <div class="form-group">
+          <label for="asunto">Mensaje o Solicitud</label>
+          <textarea id="asunto" name="asunto" rows="3" placeholder="Escribe aquí tu consulta..." required></textarea>
+        </div>
+
+        <!-- Widget de Cloudflare Turnstile -->
+        <div class="turnstile-wrapper">
+          <div id="turnstileWidget"
+               class="cf-turnstile" 
+               data-sitekey="0x4AAAAAAGC49utz9iKrwuhk" 
+               data-theme="auto"
+               data-callback="onTurnstileSuccess">
+          </div>
+        </div>
+
+        <button type="submit" id="btnEnviar" class="btn-submit">
+          <span id="btnText">Enviar a Vercel Backend</span>
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <line x1="5" y1="12" x2="19" y2="12"></line>
+            <polyline points="12 5 19 12 12 19"></polyline>
+          </svg>
+        </button>
+      </form>
+
+      <div id="statusMessage" class="status-box" style="display: none;"></div>
+    </div>
+
+    <!-- Tarjeta de Confirmación de Respuesta del Backend de Vercel -->
+    <div class="card" id="successCard" style="display: none; text-align: center;">
+      <span class="badge" style="color: #4ade80; border-color: rgba(74, 222, 128, 0.3); background: rgba(74, 222, 128, 0.1);">
+        ✓ Verificación Aprobada por Cloudflare
+      </span>
+      <h2 style="margin-top: 12px;" id="successTitle">¡Petición Validada en Servidor!</h2>
+      <p id="successSubtitle" style="color: #94a3b8; font-size: 0.9rem; margin-top: 6px;"></p>
+
+      <div style="background: rgba(15, 23, 42, 0.7); border: 1px solid rgba(255,255,255,0.1); border-radius: 8px; padding: 16px; margin: 20px 0; text-align: left; font-size: 0.85rem;">
+        <p style="margin-bottom: 6px;"><strong>Nombre:</strong> <span id="resNombre"></span></p>
+        <p style="margin-bottom: 6px;"><strong>Email:</strong> <span id="resEmail"></span></p>
+        <p style="margin-bottom: 8px;"><strong>Mensaje:</strong> <span id="resMensaje"></span></p>
+        <hr style="border: none; border-top: 1px solid rgba(255,255,255,0.1); margin: 10px 0;">
+        <p style="color: #f6821f; font-weight: 600; margin-bottom: 4px;">Metadatos de Cloudflare Siteverify:</p>
+        <p style="font-size: 0.8rem; color: #cbd5e1; margin-bottom: 4px;"><strong>Hostname:</strong> <span id="resHostname"></span></p>
+        <p style="font-size: 0.8rem; color: #cbd5e1; margin-bottom: 6px;"><strong>Timestamp:</strong> <span id="resTimestamp"></span></p>
+        <p style="font-size: 0.8rem; color: #94a3b8; margin-bottom: 4px;">Token verificado en backend:</p>
+        <div id="resToken" style="font-family: monospace; font-size: 0.72rem; word-break: break-all; background: rgba(0,0,0,0.5); padding: 8px; border-radius: 4px; color: #86efac;"></div>
+      </div>
+
+      <button onclick="reiniciarFormulario()" class="btn-submit" style="background: rgba(255,255,255,0.1); border: 1px solid rgba(255,255,255,0.2);">
+        Hacer otro envío
+      </button>
+    </div>
+  </div>
+
+  <script>
+    let ultimoToken = "";
+
+    // 1. Callback ejecutado cuando Turnstile completa la verificación en el navegador
+    function onTurnstileSuccess(token) {
+      console.log('Turnstile: Token generado en navegador ->', token);
+      ultimoToken = token;
+      
+      const statusBox = document.getElementById('statusMessage');
+      statusBox.className = 'status-box success';
+      statusBox.textContent = '✓ Verificación preliminar de Cloudflare superada en el navegador.';
+      statusBox.style.display = 'block';
+    }
+
+    // 2. Manejo de envío hacia la Serverless Function de Vercel (/api/verificar)
+    const form = document.getElementById('registroForm');
+    const formCard = document.getElementById('formCard');
+    const successCard = document.getElementById('successCard');
+    const statusBox = document.getElementById('statusMessage');
+    const btnSubmit = document.getElementById('btnEnviar');
+    const btnText = document.getElementById('btnText');
+
+    form.addEventListener('submit', async function(e) {
+      e.preventDefault();
+
+      const tokenInput = document.querySelector('[name="cf-turnstile-response"]');
+      const token = (tokenInput && tokenInput.value) || ultimoToken;
+
+      if (!token) {
+        statusBox.className = 'status-box error';
+        statusBox.textContent = '⚠️ Espera que el widget de Cloudflare Turnstile termine de validar.';
+        statusBox.style.display = 'block';
+        return;
+      }
+
+      // Deshabilitar botón durante la petición
+      btnSubmit.disabled = true;
+      btnText.textContent = 'Validando con Cloudflare en Vercel...';
+      statusBox.style.display = 'none';
+
+      const payload = {
+        nombre: document.getElementById('nombre').value,
+        email: document.getElementById('email').value,
+        asunto: document.getElementById('asunto').value,
+        'cf-turnstile-response': token
+      };
+
+      try {
+        // Enviar a la Serverless Function en Vercel
+        const response = await fetch('/api/verificar', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify(payload),
+        });
+
+        const data = await response.json();
+
+        if (response.ok && data.success) {
+          // Éxito: Servidor validó el token contra Cloudflare
+          document.getElementById('successSubtitle').textContent = data.message;
+          document.getElementById('resNombre').textContent = payload.nombre;
+          document.getElementById('resEmail').textContent = payload.email;
+          document.getElementById('resMensaje').textContent = payload.asunto;
+          document.getElementById('resHostname').textContent = (data.data && data.data.hostname) || window.location.hostname;
+          document.getElementById('resTimestamp').textContent = (data.data && data.data.challenge_ts) || new Date().toISOString();
+          document.getElementById('resToken').textContent = token;
+
+          formCard.style.display = 'none';
+          successCard.style.display = 'block';
+        } else {
+          // Fallo de validación
+          statusBox.className = 'status-box error';
+          statusBox.textContent = `Error del servidor: ${data.message || 'Token no válido'}`;
+          statusBox.style.display = 'block';
+        }
+      } catch (err) {
+        console.error('Error al conectar con la API de Vercel:', err);
+        statusBox.className = 'status-box error';
+        statusBox.textContent = 'No se pudo conectar con /api/verificar. Si estás probando localmente sin Vercel CLI, asegúrate de levantar un servidor Node.js o desplegar en Vercel.';
+        statusBox.style.display = 'block';
+      } finally {
+        btnSubmit.disabled = false;
+        btnText.textContent = 'Enviar a Vercel Backend';
+      }
+    });
+
+    function reiniciarFormulario() {
+      form.reset();
+      ultimoToken = "";
+      statusBox.style.display = 'none';
+      successCard.style.display = 'none';
+      formCard.style.display = 'block';
+      if (window.turnstile) {
+        turnstile.reset();
+      }
+    }
+  </script>
+</body>
+</html>

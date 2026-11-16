@@ -1,0 +1,5 @@
+{
+  "name": "formulario-turnstile",
+  "version": "1.0.0",
+  "description": "Formulario con Cloudflare Turnstile desplegado en Vercel"
+}
